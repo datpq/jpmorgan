@@ -36,10 +36,16 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
         this.gateway = gateway;
     }
     
+    /**
+     * return the associated Gateway
+     */
     public Gateway getGateway() {
     	return gateway;
     }
     
+    /**
+     * register a Resource
+     */
     public void registerResource(Resource res) {
         if (log.isDebugEnabled()) {
             log.debug("registerResource id = " + res.getId());
@@ -47,6 +53,9 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
         arrResources.add(res);
     }
     
+    /**
+     * Receive an array of messages
+     */
     public void receiveMessage(Message[] arrMsg) {
         if (log.isDebugEnabled()) {
             log.debug("receiveMessage length = " + arrMsg.length);
@@ -58,6 +67,9 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
         process();
     }
     
+    /**
+     * Cancel a group of message
+     */
     public void cancelGroup(String groupId) {
     	if (log.isDebugEnabled()) {
     		log.debug("cancel group " + groupId);
@@ -65,6 +77,10 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
     	arrCancelledGroup.add(groupId);
     }
     
+    /**
+     * This method can be overridden to use a different Message prioritisation
+     * algorithms to select the next Message from the queue
+     */
     public Message getFirstMessageByPriority() {
     	Message result = null;
     	for(int i=0; i<arrMessages.size(); i++) {
@@ -80,17 +96,23 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
     	return result;
     }
 
-    //this method is synchronized
+    /**
+     * Process the queue of message.
+     * This method is synchronized because it may be called from other Thread.
+     * Is called from main thread and from the thread where message.completed is called, resource is
+     * available.
+     */
 	private synchronized void process() {
 		Message msg = getFirstMessageByPriority();
-		//verify if the message's group was cancelled ==> cancel the message
 		while (msg != null) {
+			//if group is already cancelled ==> remove the message from queue
 			if (arrCancelledGroup.contains(msg.getGroupId())) {
 				if (log.isDebugEnabled()) {
 					log.debug(msg.toString() + " was cancelled ==> remove from queue");
 				}
 				arrMessages.remove(msg);
 				msg = getFirstMessageByPriority();
+			//if group is already terminated ==> remove the message from queue
 			} else if (arrTerminationGroup.contains(msg.getGroupId())) {
 				if (log.isDebugEnabled()) {
 					log.debug("Already received termination message of group " + msg.getGroupId() + ". Do not process this group anymore ==> remove from queue");
@@ -108,6 +130,7 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
 			return;
 		}
 		Resource res = null;
+		//find the first available resource
 		for(Resource rs : arrResources) {
 			if (rs.isAvailable()) {
 				res = rs;
@@ -120,17 +143,23 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
 			}
 			return;
 		}
+		
 		arrMessages.remove(msg);
 		if (msg.IsTermination()) {
 			arrTerminationGroup.add(msg.getGroupId());
 		}
-		res.send(msg);
+		res.send(msg);//send message
+		
+		//once sent, continue processing, check if there's still message in the queue and available resource
 		if (log.isDebugEnabled()) {
 			log.debug("Continue processing...");
 		}
 		process();
 	}
 	
+	/**
+	 * When message completed
+	 */
 	public void completed(Message msg) {
 		arrSentMessages.add(msg);
 		//store all in progress GroupId
@@ -143,6 +172,10 @@ public class ResourceSchedulerImpl implements ResourceScheduler {
 		process();
 	}
 	
+	/**
+	 * specific for this Implementation
+	 * @return
+	 */
 	public List<Message> getSentMessages() {
 		return arrSentMessages;
 	}
